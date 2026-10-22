@@ -1,0 +1,21 @@
+{
+  "name": "tactical-walkie-talkie",
+  "version": "1.1.0",
+  "description": "Tactical WebRTC Walkie-Talkie for Real-Time Team Communication",
+  "main": "index.html",
+  "private": true,
+  "scripts": {
+    "start": "node init && serve . -l 3000"
+  },
+  "devDependencies": {
+    "serve": "^14.2.4"
+  },
+  "keywords": [
+    "webrtc",
+    "walkie-talkie",
+    "peerjs",
+    "realtime-audio"
+  ],
+  "author": "",
+  "license": "MIT"
+}
