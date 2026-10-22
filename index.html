@@ -1,0 +1,921 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <meta name="theme-color" content="#0b0d0e">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="mobile-web-app-capable" content="yes">
+    <title>Comms-Hub X | Tactical Walkie-Talkie</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/peerjs@1.5.4/dist/peerjs.min.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Orbitron:wght@600;800;900&family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        tactical: {
+                            bg: '#121517', panel: '#1a1f24', border: '#2a323d',
+                            accent: '#22c55e', amber: '#f59e0b', red: '#ef4444',
+                            lcd: '#0e1d13', lcdText: '#34d399'
+                        }
+                    },
+                    fontFamily: {
+                        mono: ['Share Tech Mono', 'monospace'],
+                        display: ['Orbitron', 'sans-serif'],
+                        sans: ['Inter', 'sans-serif']
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        body { user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; touch-action: manipulation; background-color: #0b0d0e; }
+        input, select { user-select: text; -webkit-user-select: text; }
+
+        .lcd-screen {
+            background-color: #0d1a12;
+            box-shadow: inset 0 0 12px rgba(0,0,0,.9), 0 0 5px rgba(52,211,153,.2);
+            border: 2px solid #1f3827; position: relative; overflow: hidden;
+        }
+        .lcd-screen::before {
+            content: " "; display: block; position: absolute; inset: 0;
+            background: linear-gradient(rgba(18,16,16,0) 50%, rgba(0,0,0,.25) 50%);
+            background-size: 100% 4px; z-index: 2; pointer-events: none; opacity: .6;
+        }
+        .ptt-button { touch-action: none; box-shadow: 0 8px 0 #15803d, 0 12px 20px rgba(0,0,0,.6); transition: all .05s ease; }
+        .ptt-button:active, .ptt-button.active { transform: translateY(6px); box-shadow: 0 2px 0 #15803d, 0 4px 10px rgba(0,0,0,.4); background-color: #22c55e !important; }
+
+        .led { width: .75rem; height: .75rem; border-radius: 9999px; margin: 0 auto .25rem; }
+        .led-off   { background-color: #27272a; box-shadow: inset 0 1px 3px rgba(0,0,0,.8); }
+        .led-green { background-color: #22c55e; box-shadow: 0 0 10px #22c55e, 0 0 20px #22c55e; }
+        .led-red   { background-color: #ef4444; box-shadow: 0 0 10px #ef4444, 0 0 20px #ef4444; }
+        .led-amber { background-color: #f59e0b; box-shadow: 0 0 10px #f59e0b, 0 0 20px #f59e0b; }
+    </style>
+</head>
+<body class="text-gray-200 font-sans min-h-[100dvh] flex flex-col justify-between p-2 sm:p-4">
+
+    <!-- Header -->
+    <header class="max-w-md w-full mx-auto flex items-center justify-between pb-2 border-b border-tactical-border">
+        <div class="flex items-center space-x-2">
+            <i class="fa-solid fa-walkie-talkie text-tactical-accent text-xl"></i>
+            <h1 class="font-display font-extrabold text-lg tracking-wider text-gray-100">COMMS-HUB <span class="text-tactical-accent text-xs px-1.5 py-0.5 bg-tactical-accent/10 border border-tactical-accent/30 rounded">X-10</span></h1>
+        </div>
+        <button id="infoBtn" class="text-xs text-gray-400 hover:text-tactical-accent bg-tactical-panel px-2 py-1 rounded border border-tactical-border">
+            <i class="fa-solid fa-circle-info mr-1"></i> Setup Guide
+        </button>
+    </header>
+
+    <!-- Radio unit -->
+    <main class="max-w-md w-full mx-auto my-auto pt-14 pb-3">
+        <div class="bg-tactical-panel border-2 border-tactical-border rounded-3xl p-4 sm:p-6 shadow-2xl relative">
+
+            <!-- Antenna -->
+            <div class="absolute -top-12 left-8 w-4 h-12 bg-gradient-to-r from-gray-700 via-gray-900 to-gray-800 rounded-t border-t border-x border-gray-600"></div>
+            <div class="absolute -top-6 left-10 w-2 h-6 bg-gray-900"></div>
+
+            <!-- LEDs + channel -->
+            <div class="flex items-center justify-between mb-4 bg-tactical-bg p-2.5 rounded-xl border border-tactical-border">
+                <div class="flex items-center space-x-3">
+                    <div class="text-center"><div id="ledPower" class="led led-off"></div><span class="text-[9px] font-mono text-gray-400 uppercase">PWR</span></div>
+                    <div class="text-center"><div id="ledRx" class="led led-off"></div><span class="text-[9px] font-mono text-gray-400 uppercase">RX</span></div>
+                    <div class="text-center"><div id="ledTx" class="led led-off"></div><span class="text-[9px] font-mono text-gray-400 uppercase">TX</span></div>
+                </div>
+                <div class="flex items-center space-x-2 bg-tactical-panel px-3 py-1 rounded-lg border border-tactical-border">
+                    <label for="channelSelect" class="text-xs font-mono text-gray-400">CH:</label>
+                    <select id="channelSelect" class="bg-tactical-bg text-tactical-accent font-mono font-bold text-base focus:outline-none cursor-pointer pr-1">
+                        <option value="1">01 [Alpha]</option>
+                        <option value="2">02 [Bravo]</option>
+                        <option value="3">03 [Charlie]</option>
+                        <option value="4">04 [Delta]</option>
+                        <option value="5">05 [Echo]</option>
+                        <option value="6">06 [Foxtrot]</option>
+                        <option value="7">07 [Golf]</option>
+                        <option value="8">08 [Hotel]</option>
+                        <option value="9">09 [India]</option>
+                        <option value="10">10 [Kilo]</option>
+                    </select>
+                </div>
+            </div>
+
+            <!-- LCD -->
+            <div class="lcd-screen rounded-xl p-3 mb-4 font-mono">
+                <div class="flex justify-between items-start text-xs text-emerald-600/80 mb-1 border-b border-emerald-900/40 pb-1">
+                    <span id="roomDisplay">NET: DISCONNECTED</span>
+                    <span><i class="fa-solid fa-users text-[10px] mr-1"></i><span id="peerCount">0</span>/10</span>
+                </div>
+                <div class="flex justify-between items-center my-1">
+                    <div>
+                        <div class="text-[10px] text-emerald-600/70 uppercase tracking-widest">FREQUENCY</div>
+                        <div id="freqDisplay" class="text-2xl font-bold text-tactical-lcdText tracking-wider font-display">462.562 <span class="text-xs">MHz</span></div>
+                    </div>
+                    <div class="text-right">
+                        <div class="text-[10px] text-emerald-600/70 uppercase tracking-widest">STATUS</div>
+                        <div id="statusDisplay" class="text-xs font-bold text-amber-400">OFFLINE</div>
+                    </div>
+                </div>
+                <div class="mt-2 h-10 w-full bg-black/40 rounded border border-emerald-900/50 relative overflow-hidden">
+                    <canvas id="visualizerCanvas" class="w-full h-full block"></canvas>
+                    <div id="activeSpeakerText" class="absolute inset-0 flex items-center justify-center text-[10px] text-emerald-400 font-mono font-bold bg-black/50 hidden"></div>
+                </div>
+            </div>
+
+            <!-- HTTPS warning (shown by JS when mic is unavailable) -->
+            <div id="secureWarn" class="hidden mb-3 text-[11px] font-mono text-amber-300 bg-amber-500/10 border border-amber-500/40 rounded-lg p-2">
+                <i class="fa-solid fa-triangle-exclamation mr-1"></i> The microphone needs a secure page. Open this app over <b>https://</b> (or http://localhost). Plain http:// on a LAN IP will block the mic.
+            </div>
+
+            <!-- Connection -->
+            <div class="space-y-3 mb-4 bg-tactical-bg p-3 rounded-xl border border-tactical-border">
+                <div class="flex space-x-2">
+                    <input type="text" id="usernameInput" placeholder="Callsign (e.g. Eagle-1)" maxlength="12" autocomplete="off" class="flex-1 min-w-0 bg-tactical-panel border border-tactical-border rounded-lg px-3 py-1.5 text-xs font-mono text-gray-200 focus:outline-none focus:border-tactical-accent">
+                    <input type="text" id="roomIdInput" placeholder="Room ID" maxlength="10" autocomplete="off" autocapitalize="characters" class="w-28 bg-tactical-panel border border-tactical-border rounded-lg px-3 py-1.5 text-xs font-mono text-gray-200 uppercase focus:outline-none focus:border-tactical-accent">
+                </div>
+                <div class="text-[10px] font-mono text-gray-500">Every device must use the <b class="text-gray-400">same Room ID</b>. Tap INVITE below to share it.</div>
+                <div class="flex space-x-2">
+                    <button id="connectBtn" class="flex-1 bg-tactical-accent hover:bg-emerald-600 disabled:opacity-60 text-gray-950 font-bold py-2 rounded-lg text-xs tracking-wider uppercase transition shadow">
+                        <i class="fa-solid fa-plug mr-1"></i> Connect Unit
+                    </button>
+                    <button id="disconnectBtn" class="hidden flex-1 bg-tactical-red hover:bg-red-600 text-white font-bold py-2 rounded-lg text-xs tracking-wider uppercase transition shadow">
+                        <i class="fa-solid fa-power-off mr-1"></i> Disconnect
+                    </button>
+                </div>
+            </div>
+
+            <!-- PTT -->
+            <div class="my-6 text-center">
+                <button id="pttBtn" disabled class="ptt-button w-40 h-40 rounded-full bg-emerald-700 border-4 border-emerald-900 text-gray-950 font-display font-extrabold text-xl tracking-widest flex flex-col items-center justify-center mx-auto cursor-not-allowed opacity-50 select-none">
+                    <i class="fa-solid fa-microphone text-3xl mb-1 text-gray-900"></i>
+                    <span>PUSH TO</span>
+                    <span class="text-sm">TALK</span>
+                </button>
+                <div class="mt-3 text-[10px] font-mono text-gray-400">
+                    <span class="hidden sm:inline">[ HOLD SPACEBAR OR CLICK AND HOLD TO TRANSMIT ]</span>
+                    <span class="sm:hidden">[ TOUCH AND HOLD BUTTON TO TRANSMIT ]</span>
+                </div>
+            </div>
+
+            <!-- Audio controls -->
+            <div class="grid grid-cols-2 gap-3 pt-2 border-t border-tactical-border text-xs font-mono">
+                <div class="bg-tactical-bg p-2 rounded-lg border border-tactical-border">
+                    <div class="flex justify-between text-gray-400 mb-1"><span>VOLUME:</span><span id="volVal">100%</span></div>
+                    <input type="range" id="volumeSlider" min="0" max="100" value="100" class="w-full accent-tactical-accent h-1.5 rounded-lg cursor-pointer">
+                </div>
+                <div class="bg-tactical-bg p-2 rounded-lg border border-tactical-border flex items-center justify-between">
+                    <span class="text-gray-400">RADIO NOISE:</span>
+                    <button id="staticToggleBtn" class="px-2 py-1 bg-tactical-accent/20 border border-tactical-accent text-tactical-accent rounded text-[10px] font-bold">ON</button>
+                </div>
+            </div>
+
+            <!-- Squad -->
+            <div class="mt-4 pt-3 border-t border-tactical-border">
+                <div class="flex justify-between items-center text-xs font-mono text-gray-400 mb-2">
+                    <span>UNITS IN NET (<span id="squadCount">0</span>):</span>
+                    <div class="flex items-center gap-1.5">
+                        <button id="inviteBtn" class="text-[10px] px-1.5 py-0.5 bg-tactical-bg border border-tactical-border rounded text-gray-300 hover:text-tactical-accent"><i class="fa-solid fa-share-nodes mr-1"></i>INVITE</button>
+                        <span id="channelNameBadge" class="text-[10px] px-1.5 py-0.5 bg-tactical-bg border border-tactical-border rounded text-tactical-accent">CH 01</span>
+                    </div>
+                </div>
+                <div id="peerList" class="flex flex-wrap gap-1.5 max-h-24 overflow-y-auto pr-1"></div>
+            </div>
+        </div>
+    </main>
+
+    <footer class="max-w-md w-full mx-auto text-center py-2 text-[10px] font-mono text-gray-500">
+        Comms-Hub X • Low-Latency WebRTC Audio Mesh
+    </footer>
+
+    <!-- Remote audio elements live here -->
+    <div id="audioSink" class="sr-only" aria-hidden="true"></div>
+    <div id="toast" class="fixed left-1/2 -translate-x-1/2 bottom-6 z-[60] max-w-[90vw] px-4 py-2 rounded-lg bg-tactical-panel border border-tactical-accent/50 text-xs font-mono text-tactical-accent shadow-xl opacity-0 pointer-events-none transition-opacity duration-300"></div>
+
+    <!-- Setup guide -->
+    <div id="infoModal" class="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 hidden">
+        <div class="bg-tactical-panel border border-tactical-border rounded-2xl max-w-md w-full p-5 shadow-2xl font-sans text-xs space-y-3">
+            <div class="flex justify-between items-center border-b border-tactical-border pb-2">
+                <h3 class="font-display font-bold text-sm text-tactical-accent"><i class="fa-solid fa-book mr-1"></i> Walkie-Talkie Setup Guide</h3>
+                <button id="closeInfoBtn" class="text-gray-400 hover:text-white text-base"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            <div class="space-y-2 text-gray-300 overflow-y-auto max-h-80 pr-1">
+                <p><strong>1. Connect devices</strong></p>
+                <ul class="list-disc pl-4 space-y-1 text-gray-400">
+                    <li>Open this site (over <strong>https://</strong>) on every device.</li>
+                    <li>Use the <strong>same Room ID</strong> everywhere, or tap <strong>INVITE</strong> and send the link.</li>
+                    <li>Pick a callsign, tap <strong>CONNECT UNIT</strong> and allow the microphone.</li>
+                    <li>Up to 10 units per room. Units appear in the list within a few seconds.</li>
+                </ul>
+                <p><strong>2. Talk</strong></p>
+                <ul class="list-disc pl-4 space-y-1 text-gray-400">
+                    <li>Units must be on the <strong>same channel (01-10)</strong> to hear each other.</li>
+                    <li>Hold <strong>PUSH TO TALK</strong> (or hold <strong>SPACEBAR</strong> on a PC). Release to listen.</li>
+                </ul>
+                <p><strong>3. Tips</strong></p>
+                <ul class="list-disc pl-4 space-y-1 text-gray-400">
+                    <li>Use headphones, or keep devices apart, to avoid feedback.</li>
+                    <li>Keep the app open and the screen on. Phones pause the mic when the browser is in the background.</li>
+                </ul>
+            </div>
+            <button id="dismissInfoBtn" class="w-full bg-tactical-accent text-gray-950 font-bold py-2 rounded-lg uppercase tracking-wider mt-2">Got It</button>
+        </div>
+    </div>
+
+    <script>
+        'use strict';
+
+        /* ====================== CONFIG ====================== */
+        const APP_PREFIX = 'cmhx';      // keeps our peer IDs separate from other PeerJS apps
+        const MAX_UNITS  = 10;          // slots per room
+        const SCAN_MS    = 4000;        // how often to look for new units
+
+        // STUN finds your public address; TURN relays audio when direct paths are blocked
+        // (mobile data, strict Wi-Fi). The Open Relay credentials below are a free, best-effort
+        // public relay. For reliable use, swap in your own TURN (coturn on EC2, or a free Metered key).
+        const ICE_SERVERS = [
+            { urls: 'stun:stun.l.google.com:19302' },
+            { urls: 'stun:global.stun.twilio.com:3478' },
+            { urls: 'turn:openrelay.metered.ca:80',  username: 'openrelayproject', credential: 'openrelayproject' },
+            { urls: 'turn:openrelay.metered.ca:443', username: 'openrelayproject', credential: 'openrelayproject' },
+            { urls: 'turn:openrelay.metered.ca:443?transport=tcp', username: 'openrelayproject', credential: 'openrelayproject' }
+        ];
+
+        const CHANNEL_FREQUENCIES = {
+            1: '462.562', 2: '462.587', 3: '462.612', 4: '462.637', 5: '462.662',
+            6: '462.687', 7: '462.712', 8: '467.562', 9: '467.587', 10: '467.612'
+        };
+
+        /* ====================== HELPERS ====================== */
+        const pad2 = n => String(n).padStart(2, '0');
+        const clampCh = n => Math.min(10, Math.max(1, parseInt(n, 10) || 1));
+        const cleanText = (s, n) => String(s ?? '').trim().slice(0, n);
+        const sanitizeRoom = s => String(s ?? '').toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 10);
+        const randomRoom = () => Array.from({ length: 6 }, () => 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'[Math.floor(Math.random() * 32)]).join('');
+        const setLed = (el, c) => { el.classList.remove('led-off', 'led-green', 'led-red', 'led-amber'); el.classList.add('led-' + c); };
+        const hashRoom = () => { try { return sanitizeRoom(decodeURIComponent(location.hash.slice(1))); } catch { return ''; } };
+
+        /* ====================== SOUND ENGINE ====================== */
+        class RadioSoundEngine {
+            constructor() { this.ctx = null; this.staticNode = null; this.enableStatic = true; }
+
+            init() {
+                if (!this.ctx) this.ctx = new (window.AudioContext || window.webkitAudioContext)();
+                if (this.ctx.state === 'suspended') this.ctx.resume();
+            }
+
+            noiseBuffer(seconds) {
+                const len = Math.floor(this.ctx.sampleRate * seconds);
+                const buf = this.ctx.createBuffer(1, len, this.ctx.sampleRate);
+                const out = buf.getChannelData(0);
+                for (let i = 0; i < len; i++) out[i] = Math.random() * 2 - 1;
+                return buf;
+            }
+
+            playSquelch(isStart = true) {
+                if (!this.ctx) return;
+                const now = this.ctx.currentTime;
+                const src = this.ctx.createBufferSource();
+                src.buffer = this.noiseBuffer(isStart ? 0.08 : 0.12);
+
+                const filter = this.ctx.createBiquadFilter();
+                filter.type = 'bandpass';
+                filter.frequency.setValueAtTime(isStart ? 1200 : 800, now);
+                filter.Q.setValueAtTime(3, now);
+
+                const gain = this.ctx.createGain();
+                gain.gain.setValueAtTime(0.3, now);
+                gain.gain.exponentialRampToValueAtTime(0.01, now + (isStart ? 0.07 : 0.11));
+
+                src.connect(filter); filter.connect(gain); gain.connect(this.ctx.destination);
+                src.start(now);
+
+                if (isStart) {
+                    const osc = this.ctx.createOscillator();
+                    const g = this.ctx.createGain();
+                    osc.type = 'sine';
+                    osc.frequency.setValueAtTime(880, now);
+                    g.gain.setValueAtTime(0.08, now);
+                    g.gain.exponentialRampToValueAtTime(0.001, now + 0.05);
+                    osc.connect(g); g.connect(this.ctx.destination);
+                    osc.start(now); osc.stop(now + 0.05);
+                }
+            }
+
+            startBackgroundStatic() {
+                if (!this.ctx || !this.enableStatic || this.staticNode) return;
+                const node = this.ctx.createBufferSource();
+                node.buffer = this.noiseBuffer(2);
+                node.loop = true;
+                const filter = this.ctx.createBiquadFilter();
+                filter.type = 'bandpass'; filter.frequency.value = 1500; filter.Q.value = 1.5;
+                const gain = this.ctx.createGain();
+                gain.gain.value = 0.015;
+                node.connect(filter); filter.connect(gain); gain.connect(this.ctx.destination);
+                node.start();
+                this.staticNode = node;
+            }
+
+            stopBackgroundStatic() {
+                if (!this.staticNode) return;
+                try { this.staticNode.stop(); this.staticNode.disconnect(); } catch {}
+                this.staticNode = null;
+            }
+        }
+
+        /* ====================== APP ======================
+           How devices find each other (no server of our own needed):
+           - Each unit claims the first free peer ID "cmhx-<room>-<slot>" (slot 1..10).
+           - The LOWER slot of any pair opens the data link + audio call to the higher one,
+             so there are never duplicate links.
+           - Units also tell each other who they know (peer exchange), so everyone
+             ends up connected to everyone within a few seconds.
+           - One audio call per pair carries voice both ways; mic is muted until PTT.
+        ==================================================== */
+        class WalkieTalkieApp {
+            constructor() {
+                this.sound = new RadioSoundEngine();
+                this.state = 'off';               // off | connecting | online
+                this.peer = null; this.slot = 0; this.myPeerId = null;
+                this.callsign = ''; this.room = ''; this.prefix = '';
+                this.channel = 1;
+                this.localStream = null;
+                this.squad = {};                  // peerId -> member
+                this.dialing = {};                // peerId -> { conn, t }
+                this.isTransmitting = false;
+                this.rxCount = 0; this.rxNames = '';
+                this.signalLost = false;
+                this.timers = { scan: null, open: null, reconnect: null, toast: null };
+                this.wakeLock = null;
+                this.txAnalyser = null; this.rxAnalyser = null; this.txSrc = null; this.silent = null;
+
+                const ids = ['connectBtn','disconnectBtn','usernameInput','roomIdInput','pttBtn','channelSelect',
+                    'ledPower','ledRx','ledTx','statusDisplay','freqDisplay','roomDisplay','peerCount','volumeSlider',
+                    'volVal','staticToggleBtn','peerList','squadCount','channelNameBadge','visualizerCanvas',
+                    'activeSpeakerText','infoBtn','infoModal','closeInfoBtn','dismissInfoBtn','inviteBtn',
+                    'audioSink','toast','secureWarn'];
+                this.dom = Object.fromEntries(ids.map(id => [id, document.getElementById(id)]));
+
+                this.initEvents();
+                this.initVisualizer();
+                this.syncNet();
+            }
+
+            /* ---------- UI events ---------- */
+            initEvents() {
+                const d = this.dom;
+                let saved = '';
+                try { saved = localStorage.getItem('cmhx_callsign') || ''; } catch {}
+                d.usernameInput.value = saved || 'Unit-' + Math.floor(100 + Math.random() * 900);
+                d.roomIdInput.value = (hashRoom().length >= 3 ? hashRoom() : randomRoom()).toUpperCase();
+                d.roomIdInput.addEventListener('input', () => { d.roomIdInput.value = sanitizeRoom(d.roomIdInput.value).toUpperCase(); });
+
+                if (!window.isSecureContext || !navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+                    d.secureWarn.classList.remove('hidden');
+                }
+
+                d.connectBtn.addEventListener('click', e => { e.currentTarget.blur(); this.connectUnit(); });
+                d.disconnectBtn.addEventListener('click', e => { e.currentTarget.blur(); this.teardown(); });
+                d.inviteBtn.addEventListener('click', () => this.invite());
+
+                d.channelSelect.addEventListener('change', e => this.onChannelChange(e));
+                this.channel = clampCh(d.channelSelect.value);
+
+                // Push-to-talk (pointer events cover mouse + touch + pen; capture keeps it held if the finger slides)
+                const ptt = d.pttBtn;
+                ptt.addEventListener('pointerdown', e => { e.preventDefault(); try { ptt.setPointerCapture(e.pointerId); } catch {} this.startTx(); });
+                ['pointerup', 'pointercancel', 'lostpointercapture'].forEach(ev => ptt.addEventListener(ev, e => { e.preventDefault(); this.stopTx(); }));
+                ptt.addEventListener('contextmenu', e => e.preventDefault());
+
+                const typing = () => ['INPUT', 'SELECT', 'TEXTAREA'].includes(document.activeElement.tagName);
+                window.addEventListener('keydown', e => {
+                    if (e.code !== 'Space' || e.repeat || typing()) return;
+                    e.preventDefault(); this.startTx();
+                });
+                window.addEventListener('keyup', e => {
+                    if (e.code !== 'Space' || typing()) return;
+                    e.preventDefault(); this.stopTx();
+                });
+
+                // Never leave the mic open by accident
+                window.addEventListener('blur', () => this.stopTx());
+                document.addEventListener('visibilitychange', () => {
+                    if (document.visibilityState === 'hidden') { this.stopTx(); return; }
+                    if (this.state !== 'online') return;
+                    const track = this.localStream && this.localStream.getAudioTracks()[0];
+                    if (!track || track.readyState === 'ended') this.teardown('Mic was stopped in the background. Tap CONNECT to rejoin.');
+                    else this.lockScreen();
+                });
+                window.addEventListener('pagehide', () => { if (this.state !== 'off') this.teardown(); });
+
+                d.volumeSlider.addEventListener('input', e => {
+                    d.volVal.textContent = `${e.target.value}%`;
+                    Object.values(this.squad).forEach(m => { if (m.audioEl) m.audioEl.volume = e.target.value / 100; });
+                });
+
+                d.staticToggleBtn.addEventListener('click', () => {
+                    this.sound.enableStatic = !this.sound.enableStatic;
+                    d.staticToggleBtn.textContent = this.sound.enableStatic ? 'ON' : 'OFF';
+                    d.staticToggleBtn.classList.toggle('opacity-50', !this.sound.enableStatic);
+                    if (!this.sound.enableStatic) this.sound.stopBackgroundStatic();
+                    else if (this.state === 'online') this.sound.startBackgroundStatic();
+                });
+
+                const modal = show => d.infoModal.classList.toggle('hidden', !show);
+                d.infoBtn.addEventListener('click', () => modal(true));
+                d.closeInfoBtn.addEventListener('click', () => modal(false));
+                d.dismissInfoBtn.addEventListener('click', () => modal(false));
+            }
+
+            toast(msg) {
+                const el = this.dom.toast;
+                el.textContent = msg;
+                el.classList.remove('opacity-0');
+                clearTimeout(this.timers.toast);
+                this.timers.toast = setTimeout(() => el.classList.add('opacity-0'), 4500);
+            }
+
+            async invite() {
+                const room = sanitizeRoom(this.dom.roomIdInput.value);
+                if (room.length < 3) return this.toast('Enter a Room ID first');
+                const url = location.href.split('#')[0] + '#' + room;
+                try {
+                    if (navigator.share && matchMedia('(pointer: coarse)').matches) {
+                        await navigator.share({ title: 'Comms-Hub X', text: `Join my net ${room.toUpperCase()}`, url });
+                        return;
+                    }
+                } catch (e) { if (e.name === 'AbortError') return; }
+                try { await navigator.clipboard.writeText(url); this.toast('Invite link copied'); }
+                catch { prompt('Copy this invite link:', url); }
+            }
+
+            onChannelChange(e) {
+                if (this.isTransmitting) this.stopTx();
+                this.channel = clampCh(e.target.value);
+                this.dom.freqDisplay.innerHTML = `${CHANNEL_FREQUENCIES[this.channel]} <span class="text-xs">MHz</span>`;
+                this.dom.channelNameBadge.textContent = `CH ${pad2(this.channel)}`;
+                e.target.blur();
+                Object.values(this.squad).forEach(m => this.applyGate(m));
+                this.broadcast({ t: 'CH', channel: this.channel });
+                this.syncNet();
+            }
+
+            /* ---------- Connect / disconnect ---------- */
+            async connectUnit() {
+                if (this.state !== 'off') return;
+                const d = this.dom;
+                this.callsign = cleanText(d.usernameInput.value, 12) || 'Unit-' + Math.floor(100 + Math.random() * 900);
+                this.room = sanitizeRoom(d.roomIdInput.value);
+                if (this.room.length < 3) return this.toast('Room ID needs at least 3 letters or numbers');
+                if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+                    d.secureWarn.classList.remove('hidden');
+                    return this.toast('Mic unavailable. Open this page over https://');
+                }
+                d.roomIdInput.value = this.room.toUpperCase();
+                try { localStorage.setItem('cmhx_callsign', this.callsign); } catch {}
+                this.prefix = `${APP_PREFIX}-${this.room}`;
+                this.channel = clampCh(d.channelSelect.value);
+
+                this.sound.init();
+                this.state = 'connecting';
+                d.connectBtn.disabled = true;
+                this.refreshStatus();
+
+                try {
+                    this.localStream = await navigator.mediaDevices.getUserMedia({
+                        audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+                        video: false
+                    });
+                } catch (err) {
+                    this.state = 'off';
+                    d.connectBtn.disabled = false;
+                    this.refreshStatus();
+                    return this.toast(err.name === 'NotAllowedError' ? 'Microphone blocked. Allow mic access and try again.'
+                        : err.name === 'NotFoundError' ? 'No microphone found on this device.'
+                        : 'Could not open the microphone.');
+                }
+                this.localStream.getAudioTracks()[0].enabled = false;   // muted until PTT
+                this.buildMeters();
+
+                this.timers.open = setTimeout(() => {
+                    if (this.state === 'connecting') this.teardown('Could not reach the signal server. Check your internet.');
+                }, 15000);
+                this.claimSlot(1);
+            }
+
+            claimSlot(n) {
+                if (n > MAX_UNITS) return this.teardown(`Room is full (${MAX_UNITS}/${MAX_UNITS}). Try another Room ID.`);
+                const id = `${this.prefix}-${n}`;
+                const peer = new Peer(id, { debug: 1, config: { iceServers: ICE_SERVERS } });
+                this.peer = peer;
+                const current = () => this.peer === peer;
+
+                peer.on('open', () => {
+                    if (!current()) return;
+                    if (this.state === 'online') {            // signalling came back after a drop
+                        this.signalLost = false; this.refreshStatus(); return;
+                    }
+                    clearTimeout(this.timers.open);
+                    this.slot = n; this.myPeerId = id;
+                    this.goOnline();
+                });
+                peer.on('connection', conn => { if (current()) this.bindData(conn, false); });
+                peer.on('call', call => {
+                    if (!current() || !this.localStream) return;
+                    call.answer(this.localStream);
+                    this.bindCall(call);
+                });
+                peer.on('disconnected', () => {
+                    if (!current() || this.state !== 'online') return;
+                    this.signalLost = true; this.refreshStatus(); this.scheduleReconnect();
+                });
+                peer.on('error', err => {
+                    if (!current()) return;
+                    if (err.type === 'unavailable-id') { peer.destroy(); this.claimSlot(n + 1); return; }   // slot taken -> next
+                    if (err.type === 'peer-unavailable') return;                                              // normal while scanning
+                    console.warn('PeerJS:', err.type, err.message);
+                    if (this.state === 'connecting') this.teardown('Could not reach the signal server. Check your connection.');
+                    else if (['network', 'server-error', 'socket-error', 'socket-closed'].includes(err.type)) {
+                        this.signalLost = true; this.refreshStatus(); this.scheduleReconnect();
+                    }
+                });
+            }
+
+            scheduleReconnect() {
+                clearTimeout(this.timers.reconnect);
+                this.timers.reconnect = setTimeout(() => {
+                    const p = this.peer;
+                    if (this.state !== 'online' || !p || p.destroyed) return;
+                    if (p.disconnected) { try { p.reconnect(); } catch {} this.scheduleReconnect(); }
+                }, 3000);
+            }
+
+            goOnline() {
+                const d = this.dom;
+                this.state = 'online';
+                setLed(d.ledPower, 'green');
+                d.roomDisplay.textContent = `NET: ${this.room.toUpperCase()} · U${pad2(this.slot)}`;
+                d.connectBtn.classList.add('hidden');
+                d.disconnectBtn.classList.remove('hidden');
+                d.pttBtn.disabled = false;
+                d.pttBtn.classList.remove('opacity-50', 'cursor-not-allowed');
+                this.sound.startBackgroundStatic();
+                this.lockScreen();
+                this.scan();
+                this.timers.scan = setInterval(() => this.scan(), SCAN_MS);
+                this.syncNet();
+            }
+
+            teardown(msg) {
+                const wasOnline = this.state === 'online';
+                this.stopTx();
+                Object.values(this.timers).forEach(t => clearTimeout(t));
+                clearInterval(this.timers.scan);
+
+                this.broadcast({ t: 'LEAVE' });
+                const p = this.peer;
+                this.peer = null;                     // old handlers now ignore themselves
+                if (p) { try { p.destroy(); } catch {} }
+
+                Object.values(this.squad).forEach(m => { try { m.call && m.call.close(); } catch {} this.detachAudio(m); });
+                this.squad = {}; this.dialing = {};
+
+                [this.txSrc, this.txAnalyser, this.rxAnalyser, this.silent].forEach(n => { try { n && n.disconnect(); } catch {} });
+                this.txSrc = this.txAnalyser = this.rxAnalyser = this.silent = null;
+                if (this.localStream) this.localStream.getTracks().forEach(t => t.stop());
+                this.localStream = null;
+
+                this.sound.stopBackgroundStatic();
+                if (wasOnline) this.sound.playSquelch(false);
+                if (this.wakeLock) { try { this.wakeLock.release(); } catch {} this.wakeLock = null; }
+
+                this.state = 'off'; this.signalLost = false; this.slot = 0; this.myPeerId = null;
+                this.rxCount = 0; this.rxNames = '';
+
+                const d = this.dom;
+                [d.ledPower, d.ledRx, d.ledTx].forEach(l => setLed(l, 'off'));
+                d.roomDisplay.textContent = 'NET: DISCONNECTED';
+                d.connectBtn.disabled = false;
+                d.connectBtn.classList.remove('hidden');
+                d.disconnectBtn.classList.add('hidden');
+                d.pttBtn.disabled = true;
+                d.pttBtn.classList.add('opacity-50', 'cursor-not-allowed');
+                this.syncNet();
+                if (msg) this.toast(msg);
+            }
+
+            async lockScreen() {
+                try {
+                    if ('wakeLock' in navigator && !this.wakeLock) {
+                        this.wakeLock = await navigator.wakeLock.request('screen');
+                        this.wakeLock.addEventListener('release', () => { this.wakeLock = null; });
+                    }
+                } catch {}
+            }
+
+            /* ---------- Peer discovery & links ---------- */
+            slotOf(id) {
+                const p = this.prefix + '-';
+                if (typeof id !== 'string' || !id.startsWith(p)) return 0;
+                const rest = id.slice(p.length);
+                if (!/^\d{1,2}$/.test(rest)) return 0;
+                const n = +rest;
+                return n >= 1 && n <= MAX_UNITS ? n : 0;
+            }
+
+            getMember(id) {
+                if (!this.squad[id]) {
+                    this.squad[id] = { id, slot: this.slotOf(id), callsign: null, channel: 1, talking: false,
+                        conn: null, call: null, audioEl: null, src: null, stream: null, t0: Date.now() };
+                }
+                return this.squad[id];
+            }
+
+            scan() {
+                if (this.state !== 'online' || !this.peer || this.peer.disconnected) return;
+                // drop half-open placeholders
+                Object.values(this.squad).forEach(m => { if (!m.conn && Date.now() - m.t0 > 15000) this.dropPeer(m.id); });
+                for (let s = this.slot + 1; s <= MAX_UNITS; s++) this.dial(s);
+            }
+
+            dial(s) {
+                const id = `${this.prefix}-${s}`;
+                const m = this.squad[id];
+                if (m && m.conn && m.conn.open) return;
+                const pending = this.dialing[id];
+                if (pending && Date.now() - pending.t < 5000) return;
+                if (pending) { try { pending.conn.close(); } catch {} }
+                const conn = this.peer.connect(id, { reliable: true });
+                this.dialing[id] = { conn, t: Date.now() };
+                this.bindData(conn, true);
+            }
+
+            bindData(conn, outgoing) {
+                const id = conn.peer;
+                conn.on('open', () => {
+                    if (this.dialing[id] && this.dialing[id].conn === conn) delete this.dialing[id];
+                    if (!this.slotOf(id)) { conn.close(); return; }
+                    const m = this.getMember(id);
+                    const old = m.conn;
+                    m.conn = conn;
+                    if (old && old !== conn) { try { old.close(); } catch {} }
+                    conn.send({ t: 'HELLO', callsign: this.callsign, channel: this.channel });
+                    if (outgoing) this.callPeer(id);
+                });
+                conn.on('data', data => this.onData(id, conn, data));
+                const gone = () => {
+                    if (this.dialing[id] && this.dialing[id].conn === conn) delete this.dialing[id];
+                    this.dropPeer(id, conn);
+                };
+                conn.on('close', gone);
+                conn.on('error', gone);
+            }
+
+            onData(id, conn, d) {
+                if (!d || typeof d !== 'object') return;
+                if (d.t === 'HELLO') {
+                    const m = this.getMember(id);
+                    const first = !m.callsign;
+                    m.callsign = cleanText(d.callsign, 12) || 'UNIT';
+                    m.channel = clampCh(d.channel);
+                    this.applyGate(m);
+                    this.syncNet();
+                    if (first) this.gossip();
+                    return;
+                }
+                const m = this.squad[id];
+                if (!m) return;
+                if (d.t === 'PEERS' && Array.isArray(d.ids)) {
+                    d.ids.slice(0, MAX_UNITS).forEach(pid => {
+                        const s = this.slotOf(pid);
+                        if (s > this.slot && pid !== this.myPeerId) this.dial(s);
+                    });
+                } else if (d.t === 'CH') {
+                    m.channel = clampCh(d.channel);
+                    m.talking = false;
+                    this.applyGate(m);
+                    this.syncNet();
+                } else if (d.t === 'TX') {
+                    m.talking = !!d.on;
+                    this.syncNet();
+                } else if (d.t === 'LEAVE') {
+                    this.dropPeer(id, conn);
+                }
+            }
+
+            gossip() {
+                const ids = Object.values(this.squad).filter(m => m.conn && m.conn.open && m.callsign).map(m => m.id);
+                this.broadcast({ t: 'PEERS', ids });
+            }
+
+            broadcast(msg) {
+                Object.values(this.squad).forEach(m => {
+                    if (m.conn && m.conn.open) { try { m.conn.send(msg); } catch {} }
+                });
+            }
+
+            dropPeer(id, conn) {
+                const m = this.squad[id];
+                if (!m) return;
+                if (conn && m.conn && m.conn !== conn) return;     // stale link, a newer one replaced it
+                const call = m.call;
+                m.call = null;
+                try { call && call.close(); } catch {}
+                this.detachAudio(m);
+                delete this.squad[id];
+                this.syncNet();
+            }
+
+            /* ---------- Audio calls ---------- */
+            callPeer(id) {
+                if (!this.peer || !this.localStream) return;
+                const call = this.peer.call(id, this.localStream);
+                if (call) this.bindCall(call);
+            }
+
+            bindCall(call) {
+                const id = call.peer;
+                const m = this.getMember(id);
+                const old = m.call;
+                m.call = call;
+                if (old && old !== call) { try { old.close(); } catch {} }
+
+                call.on('stream', stream => this.attachAudio(id, stream));
+                const gone = () => {
+                    const mm = this.squad[id];
+                    if (!mm || mm.call !== call) return;
+                    mm.call = null;
+                    this.detachAudio(mm);
+                    // the lower slot is the caller: retry if the data link is still alive
+                    if (mm.conn && mm.conn.open && this.slotOf(id) > this.slot) {
+                        setTimeout(() => {
+                            const x = this.squad[id];
+                            if (this.state === 'online' && x && !x.call && x.conn && x.conn.open) this.callPeer(id);
+                        }, 1500);
+                    }
+                };
+                call.on('close', gone);
+                call.on('error', gone);
+            }
+
+            attachAudio(id, stream) {
+                const m = this.getMember(id);
+                if (m.stream === stream) return;
+                m.stream = stream;
+                if (!m.audioEl) {
+                    const a = document.createElement('audio');
+                    a.autoplay = true; a.playsInline = true;
+                    this.dom.audioSink.appendChild(a);
+                    m.audioEl = a;
+                }
+                m.audioEl.srcObject = stream;
+                m.audioEl.volume = this.dom.volumeSlider.value / 100;
+                const p = m.audioEl.play(); if (p && p.catch) p.catch(() => {});
+
+                if (this.sound.ctx && this.rxAnalyser) {          // level meter only; the <audio> element does the playing
+                    try { m.src && m.src.disconnect(); m.src = this.sound.ctx.createMediaStreamSource(stream); m.src.connect(this.rxAnalyser); } catch {}
+                }
+                this.applyGate(m);
+            }
+
+            detachAudio(m) {
+                try { m.src && m.src.disconnect(); } catch {}
+                m.src = null; m.stream = null;
+                if (m.audioEl) { m.audioEl.srcObject = null; m.audioEl.remove(); m.audioEl = null; }
+            }
+
+            // You only hear units on your channel
+            applyGate(m) { if (m.audioEl) m.audioEl.muted = m.channel !== this.channel; }
+
+            /* ---------- Transmit ---------- */
+            startTx() {
+                if (this.state !== 'online' || this.isTransmitting || !this.localStream) return;
+                this.sound.init();
+                this.isTransmitting = true;
+                this.localStream.getAudioTracks()[0].enabled = true;
+                setLed(this.dom.ledTx, 'red');
+                this.dom.pttBtn.classList.add('active');
+                this.sound.playSquelch(true);
+                if (navigator.vibrate) navigator.vibrate(25);
+                this.broadcast({ t: 'TX', on: true });
+                this.refreshStatus();
+            }
+
+            stopTx() {
+                if (!this.isTransmitting) return;
+                this.isTransmitting = false;
+                if (this.localStream) this.localStream.getAudioTracks()[0].enabled = false;
+                setLed(this.dom.ledTx, 'off');
+                this.dom.pttBtn.classList.remove('active');
+                this.sound.playSquelch(false);
+                this.broadcast({ t: 'TX', on: false });
+                this.refreshStatus();
+            }
+
+            /* ---------- Display ---------- */
+            // recompute who is talking on my channel, redraw the unit list and status
+            syncNet() {
+                const members = Object.values(this.squad).filter(m => m.callsign).sort((a, b) => a.slot - b.slot);
+                const talkers = members.filter(m => m.talking && m.channel === this.channel);
+
+                if (talkers.length && !this.rxCount) this.sound.playSquelch(true);
+                else if (!talkers.length && this.rxCount) this.sound.playSquelch(false);
+                this.rxCount = talkers.length;
+                this.rxNames = talkers.map(m => m.callsign.toUpperCase()).join(', ');
+                setLed(this.dom.ledRx, talkers.length ? 'amber' : 'off');
+
+                this.dom.squadCount.textContent = members.length;
+                this.dom.peerCount.textContent = this.state === 'online' ? members.length + 1 : 0;
+
+                const list = this.dom.peerList;
+                list.replaceChildren();
+                if (!members.length) {
+                    const empty = document.createElement('div');
+                    empty.className = 'text-[11px] text-gray-500 font-mono italic';
+                    empty.textContent = this.state === 'online'
+                        ? 'No other units yet. Tap INVITE and open the link on another device.'
+                        : 'Not connected.';
+                    list.appendChild(empty);
+                } else {
+                    members.forEach(m => {
+                        const same = m.channel === this.channel;
+                        const pill = document.createElement('div');
+                        pill.className = 'bg-tactical-bg border px-2 py-1 rounded text-[10px] font-mono flex items-center space-x-1 ' +
+                            (same ? 'border-tactical-accent/40 text-emerald-400' : 'border-tactical-border text-gray-500');
+                        const dot = document.createElement('span');
+                        dot.className = 'w-1.5 h-1.5 rounded-full ' +
+                            (m.talking && same ? 'bg-amber-400 animate-pulse' : same ? 'bg-emerald-400' : 'bg-gray-600');
+                        const name = document.createElement('span');
+                        name.textContent = m.callsign.toUpperCase() + (same ? '' : ` · CH${pad2(m.channel)}`);
+                        pill.append(dot, name);
+                        list.appendChild(pill);
+                    });
+                }
+                this.refreshStatus();
+            }
+
+            refreshStatus() {
+                const { statusDisplay, activeSpeakerText } = this.dom;
+                const colors = { amber: 'text-amber-400', green: 'text-emerald-400', red: 'text-red-500' };
+                let text, color, overlay = '';
+
+                if (this.state === 'off') { text = 'OFFLINE'; color = 'amber'; }
+                else if (this.state === 'connecting') { text = 'CONNECTING...'; color = 'amber'; }
+                else if (this.isTransmitting) { text = 'TRANSMITTING'; color = 'red'; overlay = 'TRANSMITTING (TX)...'; }
+                else if (this.rxCount) { text = 'RECEIVING'; color = 'amber'; overlay = `RX: ${this.rxNames}`; }
+                else if (this.signalLost) { text = 'SIGNAL LOST'; color = 'amber'; }
+                else { text = 'ONLINE / STANDBY'; color = 'green'; }
+
+                statusDisplay.textContent = text;
+                statusDisplay.className = `text-xs font-bold ${colors[color]}`;
+                activeSpeakerText.textContent = overlay;
+                activeSpeakerText.classList.toggle('hidden', !overlay);
+            }
+
+            /* ---------- Level meters ---------- */
+            buildMeters() {
+                const ctx = this.sound.ctx;
+                this.silent = ctx.createGain();
+                this.silent.gain.value = 0;                      // keeps analysers "pulled" without any audible output
+                this.silent.connect(ctx.destination);
+                this.txAnalyser = ctx.createAnalyser(); this.txAnalyser.fftSize = 256;
+                this.rxAnalyser = ctx.createAnalyser(); this.rxAnalyser.fftSize = 256;
+                this.txAnalyser.connect(this.silent);
+                this.rxAnalyser.connect(this.silent);
+                this.txSrc = ctx.createMediaStreamSource(this.localStream);
+                this.txSrc.connect(this.txAnalyser);
+            }
+
+            initVisualizer() {
+                const c = this.dom.visualizerCanvas, g = c.getContext('2d');
+                let buf = new Uint8Array(256);
+                const draw = () => {
+                    requestAnimationFrame(draw);
+                    const dpr = window.devicePixelRatio || 1;
+                    const w = Math.round(c.clientWidth * dpr), h = Math.round(c.clientHeight * dpr);
+                    if (c.width !== w || c.height !== h) { c.width = w; c.height = h; }
+                    g.clearRect(0, 0, w, h);
+
+                    const an = this.isTransmitting ? this.txAnalyser : (this.rxCount ? this.rxAnalyser : null);
+                    g.lineWidth = 1.5 * dpr;
+                    g.strokeStyle = this.isTransmitting ? '#ef4444' : this.rxCount ? '#f59e0b' : '#34d399';
+                    g.beginPath();
+                    if (an) {
+                        if (buf.length !== an.fftSize) buf = new Uint8Array(an.fftSize);
+                        an.getByteTimeDomainData(buf);
+                        const step = w / (buf.length - 1);
+                        for (let i = 0; i < buf.length; i++) {
+                            const v = (buf[i] - 128) / 128;
+                            const y = Math.max(1, Math.min(h - 1, h / 2 + v * h * 1.2));
+                            if (i) g.lineTo(i * step, y); else g.moveTo(0, y);
+                        }
+                    } else { g.moveTo(0, h / 2); g.lineTo(w, h / 2); }
+                    g.stroke();
+                };
+                draw();
+            }
+        }
+
+        window.addEventListener('DOMContentLoaded', () => { window.walkieTalkie = new WalkieTalkieApp(); });
+    </script>
+</body>
+</html>
